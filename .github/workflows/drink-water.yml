@@ -1,0 +1,41 @@
+name: 喝水提醒机器人
+
+on:
+  # 定时触发：工作日每小时一次（北京时间9点到18点）
+  schedule:
+    - cron: '0 1-10 * * 1-5'
+  
+  # 允许手动触发测试
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 发送喝水提醒
+      env:
+        WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+        SECRET: ${{ secrets.DINGTALK_SECRET }}
+      run: |
+        # 生成时间戳和签名
+        timestamp=$(date +%s%3N)
+        sign=$(echo -n "${timestamp}\n${SECRET}" | openssl dgst -sha256 -hmac "${SECRET}" -binary | base64)
+        sign=$(echo $sign | tr -d '\n')
+        
+        # 构建消息内容
+        DATA='{
+          "msgtype": "markdown",
+          "markdown": {
+            "title": "💧 喝水时间到！",
+            "text": "### 🚰 喝水提醒 \n\n现在是北京时间 $(date +"%H:%M") \n\n请站起来活动一下，喝杯水吧！\n\n💡 小贴士：每小时补充水分有助于保持精力充沛"
+          }
+        }'
+        
+        # 发送到钉钉
+        curl -H "Content-Type: application/json" \
+             -X POST \
+             "${WEBHOOK}&timestamp=${timestamp}&sign=${sign}" \
+             -d "${DATA}"
+        
+        echo "✅ 提醒已发送！"
