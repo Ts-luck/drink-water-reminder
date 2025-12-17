@@ -1,0 +1,44 @@
+name: 钉钉饮水提醒
+
+on:
+  # 1. 定时触发：工作日的北京时间9点到18点，每小时一次
+  schedule:
+    - cron: '0 1-10 * * 1-5'  # UTC时间1-10点，对应北京时间9-18点，周一至周五
+  # 2. 允许手动触发测试
+  workflow_dispatch:
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 发送提醒到钉钉
+        env:
+          # 关键：这里引用的必须是在仓库Settings中设置好的Secret名称
+          WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK }}
+        run: |
+          # 构建消息JSON，注意text中必须包含你在钉钉机器人里设置的关键词，例如“提醒”
+          MESSAGE_JSON='{
+            "msgtype": "markdown",
+            "markdown": {
+              "title": "💧 饮水提醒",
+              "text": "### 🚰 **提醒**：该喝水啦！\n\n> 现在是北京时间 $(date +\"%H:%M\")\n> 长时间工作别忘了及时补充水分，起身活动一下哦~"
+            }
+          }'
+
+          # 发送HTTP POST请求
+          HTTP_RESPONSE=$(curl -s -w "HTTP_STATUS:%{http_code}" -X POST -H "Content-Type: application/json" -d "${MESSAGE_JSON}" "${WEBHOOK_URL}")
+          
+          # 分离并显示状态码和响应体，用于调试
+          HTTP_BODY=$(echo "${HTTP_RESPONSE}" | sed -e 's/HTTP_STATUS\:.*//g')
+          HTTP_STATUS=$(echo "${HTTP_RESPONSE}" | tr -d '\n' | sed -e 's/.*HTTP_STATUS://')
+          
+          echo "响应状态码: ${HTTP_STATUS}"
+          echo "响应内容: ${HTTP_BODY}"
+          
+          # 判断是否成功（钉钉成功返回的http状态码为200）
+          if [ "${HTTP_STATUS}" -eq 200 ]; then
+            echo "✅ 提醒发送成功！请检查钉钉群。"
+          else
+            echo "❌ 发送失败，请检查上方错误信息。"
+            exit 1  # 退出并标识步骤失败，这样在Actions日志中会更明显
+          fi
