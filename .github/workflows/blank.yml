@@ -1,0 +1,55 @@
+- name: 发送喝水提醒 (增强调试版)
+  env:
+    WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+  run: |
+    # 构建消息
+    DATA='{
+      "msgtype": "markdown",
+      "markdown": {
+        "title": "💧 喝水提醒",
+        "text": "### 🚰 **提醒**：喝水时间到！ \n\n现在是北京时间 $(date +\"%H:%M\") \n\n请站起来活动一下，喝杯水吧！\n\n💡 小贴士：每小时补充水分有助于保持精力充沛"
+      }
+    }'
+    
+    echo "1. 正在发送请求到钉钉..."
+    echo "请求URL（部分）：${WEBHOOK:0:60}..."
+    
+    # 发送请求，并捕获完整的HTTP响应码、响应头和响应体
+    FULL_RESPONSE=$(curl -i -s -X POST "${WEBHOOK}" \
+      -H "Content-Type: application/json" \
+      -d "${DATA}")
+    
+    echo "2. ------------- 完整的原始响应 -------------"
+    echo "$FULL_RESPONSE"
+    echo "--------------------------------------------"
+    
+    # 提取HTTP状态码（如200, 404, 500等）
+    HTTP_CODE=$(echo "$FULL_RESPONSE" | grep -oP '^HTTP/\S+\s+\K\d+' | head -1)
+    echo "3. HTTP状态码: $HTTP_CODE"
+    
+    # 提取响应体（JSON部分）
+    RESPONSE_BODY=$(echo "$FULL_RESPONSE" | awk '/^\r?$/{body=1; next} body')
+    
+    if [ -n "$RESPONSE_BODY" ]; then
+      echo "4. 钉钉API返回的JSON内容:"
+      echo "$RESPONSE_BODY"
+      
+      # 尝试解析钉钉的错误码和错误信息
+      ERR_CODE=$(echo "$RESPONSE_BODY" | grep -o '"errcode":[0-9]*' | cut -d':' -f2)
+      ERR_MSG=$(echo "$RESPONSE_BODY" | grep -o '"errmsg":"[^"]*"' | cut -d'"' -f4)
+      
+      if [ -n "$ERR_CODE" ]; then
+        echo "5. ⚠️ 钉钉错误码: $ERR_CODE"
+        echo "   错误描述: $ERR_MSG"
+      fi
+    else
+      echo "4. 警告：未收到有效的JSON响应体。"
+    fi
+    
+    # 根据HTTP状态码判断最终结果
+    if [ "$HTTP_CODE" = "200" ]; then
+      echo "✅ 所有迹象表明请求成功，请检查钉钉群消息是否被折叠或屏蔽。"
+    else
+      echo "❌ 请求未成功。请根据上方错误信息排查。"
+      exit 1
+    fi
